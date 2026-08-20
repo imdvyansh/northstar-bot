@@ -6,7 +6,7 @@ from app.store import get_session
 from app.booking import simulate_booking
 from app import mock_agent
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.6-flash"
 
 
 def _use_real_llm() -> bool:
@@ -14,7 +14,6 @@ def _use_real_llm() -> bool:
 
 
 async def generate_reply(session_id: str, user_message: str, username: Optional[str] = None) -> Tuple[str, bool]:
-    """Returns (reply_text, should_end)."""
     if not _use_real_llm():
         return await mock_agent.generate_reply(session_id, user_message, username)
     return await _generate_reply_real(session_id, user_message, username)
@@ -81,7 +80,6 @@ async def _generate_reply_real(session_id: str, user_message: str, username: Opt
             should_end = _looks_like_ending(reply_text)
             return reply_text, should_end
 
-        # Model turn included a function call — replay it, execute it, feed the result back.
         contents.append(types.Content(role="model", parts=parts))
 
         function_response_parts = []
