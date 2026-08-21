@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Tuple, Optional
 
 from app.prompt import SYSTEM_PROMPT
@@ -6,11 +7,75 @@ from app.store import get_session
 from app.booking import simulate_booking
 from app import mock_agent
 
-MODEL = "gemini-3.6-flash"
+MODEL = "gemini-2.5-flash"
+CACHE_TTL_SECONDS = 3600
+MAX_HISTORY_TURNS = 8
+
+_client = None
+_cache_name: Optional[str] = None
+_cache_expiry: float = 0
+_cache_unavailable = False
 
 
 def _use_real_llm() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY"))
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        from google import genai
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return _client
+
+
+def _create_cache() -> Optional[str]:
+    from google.genai import types
+    from google.genai.errors import ClientError
+
+    client = _get_client()
+    try:
+        cache = client.caches.create(
+            model=MODEL,
+            config=types.CreateCachedContentConfig(
+                display_name="aanya-system-prompt",
+                system_instruction=SYSTEM_PROMPT,
+                ttl=f"{CACHE_TTL_SECONDS}s",
+            ),
+        )
+        return cache.name
+    except ClientError as e:
+        print(f"[llm_client] explicit cache unavailable, falling back: {e}")
+        return None
+
+
+def get_cache_name() -> Optional[str]: 
+    """Return a valid cache name, or None if explicit caching isn't usable.
+    Once cache creation fails (e.g. plan doesn't support it), stop retrying
+    on every request — just use system_instruction directly from then on.
+    """
+    global _cache_name, _cache_expiry, _cache_unavailable
+    if _cache_unavailable:
+        return None
+
+    now = time.time()
+    if _cache_name is None or now >= _cache_expiry:
+        name = _create_cache()
+        if name is None:
+            _cache_unavailable = True
+            return None
+        _cache_name = name
+        _cache_expiry = now + CACHE_TTL_SECONDS - 60
+    return _cache_name
+
+
+def init_cache_on_startup():
+    """Call once on app startup. No-op if GEMINI_API_KEY is not set.
+    Safe even if the account can't use explicit caching — get_cache_name()
+    fails soft and the app runs normally without it.
+    """
+    if _use_real_llm():
+        get_cache_name()
 
 
 async def generate_reply(session_id: str, user_message: str, username: Optional[str] = None) -> Tuple[str, bool]:
@@ -45,28 +110,38 @@ def _book_site_visit_declaration():
 def _build_contents(messages):
     from google.genai import types
 
+    recent = messages[-MAX_HISTORY_TURNS:]
     contents = []
-    for m in messages:
+    for m in recent:
         role = "model" if m["role"] == "assistant" else "user"
         contents.append(types.Content(role=role, parts=[types.Part(text=m["content"])]))
     return contents
 
 
 async def _generate_reply_real(session_id: str, user_message: str, username: Optional[str] = None) -> Tuple[str, bool]:
-    from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = _get_client()
+    cache_name = get_cache_name()
+
     session = get_session(session_id)
     session["messages"].append({"role": "user", "content": user_message})
 
     contents = _build_contents(session["messages"])
     tool = types.Tool(function_declarations=[_book_site_visit_declaration()])
-    config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        tools=[tool],
-        max_output_tokens=600,
-    )
+
+    if cache_name:
+        config = types.GenerateContentConfig(
+            cached_content=cache_name,
+            tools=[tool],
+            max_output_tokens=600,
+        )
+    else:
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[tool],
+            max_output_tokens=600,
+        )
 
     while True:
         response = client.models.generate_content(model=MODEL, contents=contents, config=config)

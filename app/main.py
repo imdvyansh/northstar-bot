@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import os
 from dotenv import load_dotenv
 
@@ -8,19 +8,43 @@ load_dotenv()
 
 from app.schemas import ChatRequest, ChatResponse, TranscriptResponse, Analytics
 from app.store import new_session, get_session, end_session
-from app.llm_client import generate_reply
+from app.llm_client import generate_reply, init_cache_on_startup
 from app.analytics import generate_analytics
 from app.auth import get_current_user
 from app.auth_routes import router as auth_router
 from app.database import conversations_collection
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="Northstar Homes AI Sales Agent")
 
+# --- rate limiting setup ---
+def _get_user_key(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth.split(" ")[1][:20]
+    return get_remote_address(request)
+
+limiter = Limiter(key_func=_get_user_key)
+app.state.limiter = limiter
+
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please wait a moment before trying again."},
+    )
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 app.include_router(auth_router)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+@app.on_event("startup")
+async def startup_event():
+    init_cache_on_startup()
 
 @app.get("/")
 def index():
@@ -28,7 +52,8 @@ def index():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, username: str = Depends(get_current_user)):
+@limiter.limit("15/minute")
+async def chat(request: Request, req: ChatRequest, username: str = Depends(get_current_user)):
     session_id = req.session_id
     if not session_id:
         session_id = new_session()
@@ -41,7 +66,7 @@ async def chat(req: ChatRequest, username: str = Depends(get_current_user)):
     session = get_session(session_id)
     if session["ended"]:
         raise HTTPException(status_code=400, detail="Conversation already ended")
-
+        
     reply_text, should_end = await generate_reply(session_id, req.message, username)
 
     await conversations_collection.update_one(
