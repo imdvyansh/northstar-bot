@@ -20,8 +20,27 @@
   .composer input { flex: 1; padding: 10px 12px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; }
   .composer button { background: var(--accent); border: none; padding: 10px 18px; border-radius: 20px; cursor: pointer; font-weight: 600; }
   .end-btn, .logout-btn { background: none; border: 1px solid #fff; color: #fff; border-radius: 14px; padding: 4px 10px; font-size: 11px; cursor: pointer; margin-top: 6px; margin-left: 6px; }
-  #analytics { display:none; margin: 12px 16px; padding: 12px; background: #fffaf0; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; white-space: pre-wrap; }
-  #analytics h3 { margin: 0 0 8px; font-size: 13px; color: var(--brand); }
+
+  /* --- analytics summary (internal use, not shown to the end customer) --- */
+  #analytics { display:none; margin: 12px 16px; padding: 14px 16px; background: #fffaf0; border: 1px solid var(--accent); border-radius: 10px; font-size: 13px; }
+  #analytics h3 { margin: 0 0 4px; font-size: 13px; color: var(--brand); }
+  #analytics .subtitle { font-size: 11px; color: #8a8f98; margin-bottom: 10px; }
+  #analytics .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .badge.hot { background: #fde2e2; color: #c0392b; }
+  .badge.warm { background: #fdf0d5; color: #b9770e; }
+  .badge.cold { background: #e3ecf5; color: #345; }
+  .badge.unknown { background: #eee; color: #666; }
+  #analytics .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 10px; }
+  #analytics .field { min-width: 0; }
+  #analytics .field .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8f98; margin-bottom: 2px; }
+  #analytics .field .value { font-size: 13px; color: #222; word-break: break-word; }
+  #analytics .field .value.muted { color: #b0b4ba; font-style: italic; }
+  #analytics .summary-row { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #e6d6a8; }
+  #analytics .summary-row .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8f98; margin-bottom: 3px; }
+  #analytics .summary-row .value { font-size: 13px; color: #222; line-height: 1.4; }
+  #analytics .flags { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  #analytics .flag { font-size: 11px; padding: 2px 9px; border-radius: 10px; background: #f1e6d0; color: #7a5c1e; }
+  #analytics .flag.warn { background: #fde2e2; color: #a83232; }
 
   /* --- auth screen --- */
   #authScreen { max-width: 360px; margin: 60px auto; background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 0 24px rgba(0,0,0,0.08); }
@@ -181,13 +200,62 @@ async function endConversation() {
   await showAnalytics();
 }
 
+// ---------- ANALYTICS (internal summary — not meant for the end customer) ----------
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function fieldHtml(label, value, opts = {}) {
+  const isEmpty = value === null || value === undefined || value === '' ||
+                  (Array.isArray(value) && value.length === 0);
+  const display = isEmpty ? (opts.emptyText || 'Not discussed') : (Array.isArray(value) ? value.join(', ') : value);
+  const cls = isEmpty ? 'value muted' : 'value';
+  return `<div class="field"><div class="label">${escapeHtml(label)}</div><div class="${cls}">${escapeHtml(display)}</div></div>`;
+}
+
+function interestBadge(level) {
+  const lvl = (level || 'unknown').toLowerCase();
+  const known = ['hot', 'warm', 'cold'].includes(lvl) ? lvl : 'unknown';
+  return `<span class="badge ${known}">${known}</span>`;
+}
+
+function renderAnalytics(data) {
+  const box = document.getElementById('analytics');
+
+  const flags = [];
+  if (data.escalated_to_human) flags.push('<span class="flag">Escalated to human</span>');
+  if (data.follow_up_required) flags.push('<span class="flag">Follow-up needed</span>');
+  if (data.do_not_contact) flags.push('<span class="flag warn">Do not contact</span>');
+
+  box.innerHTML = `
+    <h3>Conversation summary</h3>
+    <div class="subtitle">Internal notes — not visible to the customer</div>
+    ${interestBadge(data.interest_level)}
+    <div class="grid">
+      ${fieldHtml('Language', data.language_used)}
+      ${fieldHtml('Configuration', data.configuration_interest)}
+      ${fieldHtml('Budget signal', data.budget_signal)}
+      ${fieldHtml('Timeline', data.timeline)}
+      ${fieldHtml('Purpose', data.purpose)}
+      ${fieldHtml('Objections', data.objections_raised)}
+      ${fieldHtml('Site visit', data.site_visit_status)}
+      ${fieldHtml('Visit date/time', data.site_visit_datetime)}
+    </div>
+    ${flags.length ? `<div class="flags">${flags.join('')}</div>` : ''}
+    ${data.follow_up_note ? `<div class="summary-row"><div class="label">Follow-up note</div><div class="value">${escapeHtml(data.follow_up_note)}</div></div>` : ''}
+    ${data.summary ? `<div class="summary-row"><div class="label">Summary</div><div class="value">${escapeHtml(data.summary)}</div></div>` : ''}
+  `;
+  box.style.display = 'block';
+}
+
 async function showAnalytics() {
   if (!sessionId) return;
   const res = await authFetch('/api/analytics/' + sessionId);
   const data = await res.json();
-  const box = document.getElementById('analytics');
-  box.style.display = 'block';
-  box.innerHTML = '<h3>Conversation analytics</h3>' + JSON.stringify(data, null, 2);
+  renderAnalytics(data);
 }
 
 async function startGreeting() {
