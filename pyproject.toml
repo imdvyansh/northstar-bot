@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "northstar-bot"
 version = "0.1.0"
-description = "Northstar Homes AI sales agent — FastAPI backend (Gemini-powered)"
+description = "Northstar Homes AI sales agent — FastAPI backend (Groq-powered)"
 authors = ["Divyansh"]
 package-mode = false
 
@@ -10,7 +10,7 @@ python = "^3.10"
 fastapi = "^0.115.0"
 uvicorn = {extras = ["standard"], version = "^0.30.6"}
 pydantic = "^2.9.2"
-google-genai = "^2.0.0"
+groq = "^0.31.0"
 python-dotenv = "^1.0.1"
 motor = "^3.7.1"
 pymongo = "^4.17.0"
