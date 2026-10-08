@@ -19,7 +19,7 @@ The agent, **Aanya**, acts as a warm and respectful sales representative, follow
 ## 📋 Core Features
 
 ### 1. **AI-Powered Conversation Engine**
-- **Real LLM Mode**: Uses Google Gemini API with system prompts for production-grade responses
+- **Real LLM Mode**: Uses Groq's `openai/gpt-oss-120b` with system prompts for production-grade responses
 - **Mock Agent Mode**: Deterministic, rule-based fallback for offline testing and demos
 - **Multi-Channel Support**: Identical behavior on chat and voice (with channel-specific style adaptation)
 - **Language Detection**: Automatically detects and responds in English, Hindi, or Hinglish
@@ -66,7 +66,7 @@ Captures and tracks:
 ### Tech Stack
 - **Backend**: FastAPI 0.115+ (async Python web framework)
 - **Database**: MongoDB (async via Motor driver)
-- **LLM**: Google Generative AI (Gemini 2.5 Flash)
+- **LLM**: Groq (`openai/gpt-oss-120b`)
 - **Authentication**: JWT + bcrypt password hashing
 - **Frontend**: Vanilla HTML/CSS/JavaScript
 - **Dependency Management**: Poetry
@@ -87,7 +87,7 @@ northstar-bot/
 │   ├── __init__.py              # Package initialization
 │   ├── main.py                  # FastAPI app & core routes
 │   ├── prompt.py                # System prompt (core deliverable)
-│   ├── llm_client.py            # Gemini API integration
+│   ├── llm_client.py            # Groq API integration
 │   ├── mock_agent.py            # Offline deterministic agent
 │   ├── booking.py               # Site visit booking simulation
 │   ├── analytics.py             # Post-conversation analytics extraction
@@ -112,7 +112,7 @@ northstar-bot/
 - Python 3.10+
 - Poetry (https://python-poetry.org/)
 - MongoDB instance (local or cloud)
-- Google Gemini API key (for production mode)
+- Groq API key (for production mode)
 
 ### 1. Install Dependencies
 ```bash
@@ -125,7 +125,7 @@ poetry shell
 Create a `.env` file in the project root:
 ```bash
 # LLM Configuration
-GEMINI_API_KEY=your-gemini-key-here
+GROQ_API_KEY=your-groq-key-here
 
 # Authentication
 JWT_SECRET=your-super-secret-key-here
@@ -138,7 +138,7 @@ MONGODB_DB=your db name
 ```
 
 **Notes**:
-- If `GEMINI_API_KEY` is not set, the bot falls back to mock agent mode
+- If `GROQ_API_KEY` is not set, the bot falls back to mock agent mode
 - For production, use a strong JWT_SECRET and secure MongoDB connection
 - MongoDB can run locally (`mongod`) or via Docker/Atlas
 
@@ -288,9 +288,9 @@ Restate agreed next step, thank customer by name, sign off warmly.
 
 ### **Real LLM Mode** (Production)
 ```
-Enabled when: GEMINI_API_KEY environment variable is set
+Enabled when: GROQ_API_KEY environment variable is set
 ```
-- Uses Google Gemini 2.5 Flash API
+- Uses Groq's `openai/gpt-oss-120b` API
 - Powered by `app/prompt.py` system prompt
 - Supports `book_site_visit` function tool
 - Max output: 600 tokens
@@ -298,7 +298,7 @@ Enabled when: GEMINI_API_KEY environment variable is set
 
 ### **Mock Agent Mode** (Offline/Testing)
 ```
-Enabled when: GEMINI_API_KEY is NOT set
+Enabled when: GROQ_API_KEY is NOT set
 ```
 - Deterministic, rule-based responses
 - Fast, no external API calls
@@ -471,7 +471,7 @@ Pricing:
 
 ### `app/llm_client.py`
 **LLM integration**
-- Gemini API client setup
+- Groq API client setup
 - System prompt injection
 - Function tool declaration (book_site_visit)
 - Content building from message history
@@ -533,7 +533,7 @@ Pricing:
 ### Environment Variables
 ```bash
 # LLM
-GEMINI_API_KEY=sk-...          # Set for production mode; omit for mock mode
+GROQ_API_KEY=gsk_...           # Set for production mode; omit for mock mode
 
 # Authentication
 JWT_SECRET=your-secret-key      # REQUIRED
@@ -547,8 +547,8 @@ MONGODB_DB=northstar_bot
 
 ### Optional Tuning
 In `app/llm_client.py`:
-- `MODEL` - Currently "gemini-2.5-flash" (changeable)
-- `max_output_tokens` - Set to 600 (reduce for shorter responses)
+- `MODEL` in `app/llm_client.py` - Currently `openai/gpt-oss-120b`
+- Chat completions use 2048 maximum completion tokens
 
 In `app/mock_agent.py`:
 - `BLOCKED_TIME_MARKERS` - Customize blocked booking slots
@@ -638,8 +638,8 @@ docker run -d -p 27017:27017 mongo:latest
 
 ### LLM API Errors
 ```bash
-# Check GEMINI_API_KEY
-echo $GEMINI_API_KEY
+# Check GROQ_API_KEY
+echo $GROQ_API_KEY
 
 # If not set, mock agent will run automatically
 ```
@@ -659,7 +659,7 @@ echo $GEMINI_API_KEY
 
 ### Key Components
 - ✅ Multi-language support (English/Hindi/Hinglish)
-- ✅ Real LLM (Gemini) + Mock agent fallback
+- ✅ Real LLM (Groq) + Mock agent fallback
 - ✅ Site visit booking with failure handling
 - ✅ Analytics extraction
 - ✅ JWT authentication
@@ -674,7 +674,7 @@ echo $GEMINI_API_KEY
 ### Checklist
 - [ ] Set `JWT_SECRET` to a strong, random value
 - [ ] Use MongoDB Atlas or managed MongoDB service
-- [ ] Set `GEMINI_API_KEY` to valid API key
+- [ ] Set `GROQ_API_KEY` to valid API key
 - [ ] Deploy FastAPI with `uvicorn` + reverse proxy (nginx/Apache)
 - [ ] Enable HTTPS/SSL
 - [ ] Set appropriate `CORS` headers if frontend is separate

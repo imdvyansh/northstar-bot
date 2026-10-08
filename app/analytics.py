@@ -30,7 +30,7 @@ text:
 
 
 def _use_real_llm() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY"))
+    return bool(os.environ.get("GROQ_API_KEY"))
 
 
 def generate_analytics(session_id: str) -> Analytics:
@@ -44,22 +44,25 @@ def generate_analytics(session_id: str) -> Analytics:
 
 
 def _generate_analytics_real(session_id: str) -> Analytics:
-    from google import genai
-    from google.genai import types
+    from groq import Groq
 
     session = get_session(session_id)
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
     transcript = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in session["messages"])
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=transcript,
-        config=types.GenerateContentConfig(
-            system_instruction=ANALYTICS_SYSTEM_PROMPT,
-            response_mime_type="application/json",
-        ),
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {"role": "system", "content": ANALYTICS_SYSTEM_PROMPT},
+            {"role": "user", "content": transcript},
+        ],
+        response_format={"type": "json_object"},
+        temperature=1,
+        max_completion_tokens=2048,
+        top_p=1,
+        reasoning_effort="medium",
     )
-    data = json.loads(response.text)
+    data = json.loads(response.choices[0].message.content)
     data["session_id"] = session_id
     return Analytics(**data)
 

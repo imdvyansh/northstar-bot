@@ -9,7 +9,7 @@ load_dotenv()
 
 from app.schemas import ChatRequest, ChatResponse, TranscriptResponse, Analytics
 from app.store import new_session, get_session, end_session
-from app.llm_client import generate_reply, init_cache_on_startup
+from app.llm_client import generate_reply, init_llm_on_startup
 from app.analytics import generate_analytics
 from app.auth import get_current_user
 from app.auth_routes import router as auth_router
@@ -45,7 +45,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.on_event("startup")
 async def startup_event():
-    init_cache_on_startup()
+    init_llm_on_startup()
 
 @app.get("/")
 def index():
